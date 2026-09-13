@@ -1,0 +1,83 @@
+# values.yaml for gitea-charts/gitea
+# Install with:
+#   helm repo add gitea-charts https://dl.gitea.com/charts/
+#   helm repo update
+#   helm install gitea gitea-charts/gitea -f gitea-values.yaml -n gitea --create-namespace
+
+replicaCount: 1
+
+# --- Persistence: repos, LFS, avatars, etc ---
+persistence:
+  enabled: true
+  size: 40Gi
+  storageClass: "local-path"   # k3s default provisioner, fine for single node
+  accessModes:
+    - ReadWriteOnce
+
+# --- Postgres, run in-cluster since Hetzner has no managed DB ---
+postgresql:
+  enabled: true
+  global:
+    postgresql:
+      auth:
+        username: gitea
+        password: "CHANGE_ME_STRONG_PASSWORD"   # move to a Secret in real use, see note below
+        database: gitea
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "local-path"
+
+# --- Redis for queues/sessions (optional but recommended over SQLite-backed queues) ---
+redis-cluster:
+  enabled: false   # skip for single-node; Gitea will use built-in memory/level queues instead
+
+gitea:
+  admin:
+    username: "gitea_admin"
+    password: "CHANGE_ME_STRONG_PASSWORD"
+    email: "admin@example.com"
+  config:
+    server:
+      # Replace <SERVER_IP> with your Hetzner server's public IP, e.g. 203.0.113.5
+      # sslip.io resolves this hostname to that IP automatically — no DNS setup needed.
+      DOMAIN: "git.<SERVER_IP>.sslip.io"
+      ROOT_URL: "https://git.<SERVER_IP>.sslip.io/"
+      SSH_DOMAIN: "git.<SERVER_IP>.sslip.io"
+    database:
+      DB_TYPE: postgres
+    session:
+      PROVIDER: db
+    queue:
+      TYPE: level
+    cache:
+      ADAPTER: memory
+    # Enable Gitea Actions (built-in CI, compatible with GH Actions YAML)
+    actions:
+      ENABLED: true
+
+# --- Ingress: point this at your own ingress controller / cert-manager setup ---
+ingress:
+  enabled: true
+  className: "traefik"   # k3s ships with Traefik by default
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    # Replace <SERVER_IP> with your Hetzner server's public IP, e.g. 203.0.113.5
+    - host: git.<SERVER_IP>.sslip.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: gitea-tls
+      hosts:
+        - git.<SERVER_IP>.sslip.io
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi

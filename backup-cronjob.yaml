@@ -1,0 +1,78 @@
+# backup-cronjob.yaml
+# Nightly backup of Gitea's data (repos/LFS/config) + a Postgres dump,
+# pushed via restic to a Backblaze B2 bucket (S3-compatible API).
+#
+# Before applying:
+#   1. Create a B2 bucket + application key (S3-compatible endpoint,
+#      e.g. https://s3.us-west-004.backblazeb2.com)
+#   2. Create the secret:
+#        kubectl create secret generic backup-secrets -n gitea \
+#          --from-literal=RESTIC_REPOSITORY="s3:https://s3.us-west-004.backblazeb2.com/your-bucket-name" \
+#          --from-literal=RESTIC_PASSWORD="a-strong-passphrase-for-encryption" \
+#          --from-literal=AWS_ACCESS_KEY_ID="<B2_KEY_ID>" \
+#          --from-literal=AWS_SECRET_ACCESS_KEY="<B2_APP_KEY>" \
+#          --from-literal=PGPASSWORD="CHANGE_ME_STRONG_PASSWORD"
+#   3. First run: `restic init` must be executed once against the repo
+#      (the initContainer below does this idempotently — safe to leave in).
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gitea-backup
+  namespace: gitea
+spec:
+  schedule: "0 3 * * *"   # 3am daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+            - name: restic-init
+              image: restic/restic:0.16
+              envFrom:
+                - secretRef:
+                    name: backup-secrets
+              command: ["sh", "-c", "restic snapshots || restic init"]
+          containers:
+            - name: backup
+              image: restic/restic:0.16
+              envFrom:
+                - secretRef:
+                    name: backup-secrets
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "Dumping Postgres..."
+                  PGPASSWORD="$PGPASSWORD" pg_dump -h gitea-postgresql -U gitea -d gitea \
+                    -F c -f /tmp/gitea-db.dump
+
+                  echo "Backing up Gitea data + DB dump to B2..."
+                  restic backup /data /tmp/gitea-db.dump \
+                    --tag gitea-nightly
+
+                  echo "Pruning old snapshots (keep 14 daily, 8 weekly, 6 monthly)..."
+                  restic forget --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
+
+                  echo "Backup complete."
+              volumeMounts:
+                - name: gitea-data
+                  mountPath: /data
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+          volumes:
+            - name: gitea-data
+              persistentVolumeClaim:
+                claimName: gitea-shared-storage   # matches PVC created by the Gitea chart
