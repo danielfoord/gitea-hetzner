@@ -46,8 +46,9 @@ redis-cluster:
 
 gitea:
   admin:
-    # NOTE: this is a live lookup key, not just a one-time bootstrap value —
-    # the chart's init container looks up a user with this exact username on
+    username: "danielfoord"
+    # This is a live lookup key, not just a one-time bootstrap value — the
+    # chart's init container looks up a user with this exact username on
     # every `helm upgrade` and, if found, syncs its password; if NOT found,
     # it tries to CREATE a new one instead, which fails outright if the
     # configured email is already taken ("CreateUser: e-mail already in
@@ -55,8 +56,8 @@ gitea:
     # admin user rename` CLI command in this version — if you ever rename
     # the admin account via the web UI, update this (and the email in
     # secrets.local.yaml) to match in the SAME change, before the next
-    # `helm upgrade`, or it breaks. Currently: "danielfoord".
-    username: "danielfoord"
+    # `helm upgrade`, or it breaks.
+    #
     # password and email: set only in secrets.local.yaml, never here. The
     # chart only creates this admin user at all if both username and
     # password are set — leave password unset (e.g. no secrets.local.yaml
@@ -64,11 +65,12 @@ gitea:
     # committed placeholder password.
   config:
     server:
-      # Replace <SERVER_IP> with your Hetzner server's public IP, e.g. 203.0.113.5
-      # sslip.io resolves this hostname to that IP automatically — no DNS setup needed.
-      DOMAIN: "git.<SERVER_IP>.sslip.io"
-      ROOT_URL: "https://git.<SERVER_IP>.sslip.io/"
-      SSH_DOMAIN: "git.<SERVER_IP>.sslip.io"
+      # Real domain (git.alikrik.com), DNS A record pointed at the server
+      # manually — not sslip.io. If you ever move back to a sslip.io-style
+      # placeholder domain, see SETUP.md's set-server-ip.sh flow instead.
+      DOMAIN: "git.alikrik.com"
+      ROOT_URL: "https://git.alikrik.com/"
+      SSH_DOMAIN: "git.alikrik.com"
       # The host's own sshd already owns port 22, so Gitea's SSH moves to
       # 2222 instead. The chart defaults SSH_LISTEN_PORT (what the container
       # actually listens on) to this value, so setting SSH_PORT alone is
@@ -98,15 +100,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    # Replace <SERVER_IP> with your Hetzner server's public IP, e.g. 203.0.113.5
-    - host: git.<SERVER_IP>.sslip.io
+    - host: git.alikrik.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: gitea-tls
       hosts:
-        - git.<SERVER_IP>.sslip.io
+        - git.alikrik.com
 
 # --- SSH: expose git-over-SSH on the node directly, since the host's own
 # sshd already owns port 22 and Traefik/ingress can't proxy raw SSH (L7 HTTP

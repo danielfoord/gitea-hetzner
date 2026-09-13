@@ -45,7 +45,7 @@ spec:
             # tag to whatever Postgres major version the postgresql subchart
             # actually deployed: `kubectl exec -n gitea gitea-postgresql-0 -- psql --version`.
             - name: pg-dump
-              image: postgres:16-alpine
+              image: postgres:17-alpine
               env:
                 # Same Secret+key the postgresql subchart itself created for
                 # this user — not a copy, so it can't drift out of sync with

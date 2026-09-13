@@ -41,6 +41,13 @@ On Hetzner Cloud, set this via a Cloud Firewall attached to the server, not just
 >   after which plain `git@git.<SERVER_IP>.sslip.io:owner/repo.git` works as normal.
 >
 > Make sure your public key is added under the Gitea user's *Settings → SSH/GPG Keys* (`https://git.<SERVER_IP>.sslip.io/user/settings/keys`) — that's separate from any key your OS sshd on port 22 already trusts.
+>
+> **`hostPort` + rolling update deadlock:** any `helm upgrade` that changes the pod spec (an env var, not just this SSH block) tries to schedule the new pod before killing the old one — normal `RollingUpdate` behavior. But both pods want the *same* `hostPort` 2222 on this single node, so the new one sits in `Pending` forever (`kubectl describe pod` shows `didn't have free ports for the requested pod ports`), and the rollout never completes on its own. Recurs on every such upgrade, not a one-time issue. Fix each time:
+> ```bash
+> kubectl get rs -n gitea -l app.kubernetes.io/name=gitea   # find the OLD one (DESIRED 0 or lower revision)
+> kubectl scale rs <old-replicaset-name> -n gitea --replicas=0
+> ```
+> The new pod then schedules immediately. (A `Recreate` deployment strategy would sidestep this entirely, at the cost of a few seconds of downtime per upgrade instead of a stuck rollout — not currently set.)
 
 ## 2. Install k3s
 
@@ -148,6 +155,8 @@ helm install gitea gitea-charts/gitea -f gitea-values.yaml -f secrets.local.yaml
 ```
 
 `gitea-values.yaml` already disables `postgresql-ha` — the chart enables it by default alongside plain `postgresql`, and having both on fails install with `Only one of postgresql or postgresql-ha can be enabled at the same time.` If you hit that anyway (e.g. after a values change), check `postgresql-ha.enabled: false` is still present.
+
+**Switching from sslip.io to a real domain later:** point a DNS A record at the server IP, confirm it's actually resolved (`dig +short git.yourdomain.com`) — cert issuance will fail if it hasn't propagated yet — then edit `DOMAIN`/`ROOT_URL`/`SSH_DOMAIN` and `ingress.hosts`/`tls.hosts` in `gitea-values.yaml` and `helm upgrade`. **`ingress.hosts` is a replace, not an add** — the moment this applies, the old sslip.io hostname stops routing entirely (Traefik returns 404, not a redirect), so do this DNS-verified-first, and expect a `hostPort`+`RollingUpdate` deadlock on the new pod exactly like any other env-var change (see the SSH section above) — `kubectl scale rs <old-one> --replicas=0` to unstick it. Afterward, update anything hardcoded to the old hostname: git remotes, and any repo Actions variable pointing at it (e.g. a container registry host var in a downstream project's CI).
 
 Watch the rollout:
 

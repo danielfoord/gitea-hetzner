@@ -100,6 +100,14 @@ metadata:
   name: docker-dind
   namespace: gitea
 spec:
+  # Headless: a normal ClusterIP only forwards the ports declared below
+  # (2375). testcontainers-go (used by integration/e2e in variance) has dind
+  # publish its ryuk reaper — and every container under test — on random
+  # ephemeral host ports, then dials them directly at this Service's address;
+  # against a ClusterIP those dials silently time out since the port was
+  # never declared. clusterIP: None makes DNS resolve straight to the pod IP
+  # instead, so the flat pod network carries any port through untouched.
+  clusterIP: None
   selector:
     app: docker-dind
   ports:
