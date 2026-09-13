@@ -29,6 +29,12 @@ postgresql:
       size: 10Gi
       storageClass: "local-path"
 
+# The chart enables postgresql-ha by default; it must be explicitly turned
+# off or install fails with "Only one of postgresql or postgresql-ha can be
+# enabled at the same time."
+postgresql-ha:
+  enabled: false
+
 # --- Redis for queues/sessions (optional but recommended over SQLite-backed queues) ---
 redis-cluster:
   enabled: false   # skip for single-node; Gitea will use built-in memory/level queues instead

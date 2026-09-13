@@ -129,6 +129,8 @@ helm repo update
 helm install gitea gitea-charts/gitea -f gitea-values.yaml -f secrets.local.yaml -n gitea --create-namespace
 ```
 
+`gitea-values.yaml` already disables `postgresql-ha` — the chart enables it by default alongside plain `postgresql`, and having both on fails install with `Only one of postgresql or postgresql-ha can be enabled at the same time.` If you hit that anyway (e.g. after a values change), check `postgresql-ha.enabled: false` is still present.
+
 Watch the rollout:
 
 ```bash
