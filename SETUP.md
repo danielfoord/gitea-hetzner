@@ -15,14 +15,32 @@ Open, at minimum:
 
 | Port | Purpose |
 |---|---|
-| 22/tcp | SSH to the host |
-| 80/tcp | HTTP — required for Let's Encrypt HTTP-01 validation and HTTP→HTTPS redirect |
+| 22/tcp | SSH to the host (your login, the real OS sshd) |
 | 443/tcp | HTTPS — Gitea web UI and git-over-HTTPS |
+| 2222/tcp | Gitea git-over-SSH (see note below) |
+| 80/tcp | HTTP — required for Let's Encrypt HTTP-01 validation and HTTP→HTTPS redirect |
 | 6443/tcp | k3s API server (only if you'll manage the cluster remotely with `kubectl`) |
 
 On Hetzner Cloud, set this via a Cloud Firewall attached to the server, not just `ufw`/`iptables` on the box.
 
-> **Note on git-over-SSH:** the manifests in this repo expose Gitea only over HTTP(S) via Traefik. Gitea's own SSH server (used for `git@host:...` clone URLs) runs inside the cluster but isn't published to the internet by these manifests. If you want SSH-based git access, you'll need to additionally expose the Gitea SSH service (e.g. a `NodePort` or `hostPort` on 22/2222) — decide this before opening extra firewall ports. HTTPS clone/push works out of the box either way.
+> **Note on git-over-SSH:** the host's own sshd already owns port 22, and Traefik/ingress can't proxy raw SSH (it's L7 HTTP only) — so Gitea's SSH is exposed separately, on **2222**, via `service.ssh.hostPort` in `gitea-values.yaml` (binds straight to the node, no NodePort range needed; fine for this single-node setup). `gitea.config.server.SSH_PORT` is set to match, so the UI/clone instructions show the right port.
+>
+> Because it's a non-standard port, plain `git@host:owner/repo.git` won't work (that syntax assumes 22) — use either:
+> - `ssh://git@git.<SERVER_IP>.sslip.io:2222/owner/repo.git`, or
+>
+> **Don't** try `git@git.<SERVER_IP>.sslip.io:2222/owner/repo.git` — that's not
+> valid port syntax. scp-shorthand (`user@host:path`) has no port field; git
+> silently reads `2222/owner/repo.git` as the *path* and connects on the
+> default port 22 (your OS sshd) instead, which just prompts for a system
+> password. The port only works with an explicit `ssh://` scheme, or via:
+> - a `~/.ssh/config` entry:
+>   ```
+>   Host git.<SERVER_IP>.sslip.io
+>     Port 2222
+>   ```
+>   after which plain `git@git.<SERVER_IP>.sslip.io:owner/repo.git` works as normal.
+>
+> Make sure your public key is added under the Gitea user's *Settings → SSH/GPG Keys* (`https://git.<SERVER_IP>.sslip.io/user/settings/keys`) — that's separate from any key your OS sshd on port 22 already trusts.
 
 ## 2. Install k3s
 

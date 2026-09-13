@@ -59,6 +59,12 @@ gitea:
       DOMAIN: "git.<SERVER_IP>.sslip.io"
       ROOT_URL: "https://git.<SERVER_IP>.sslip.io/"
       SSH_DOMAIN: "git.<SERVER_IP>.sslip.io"
+      # The host's own sshd already owns port 22, so Gitea's SSH moves to
+      # 2222 instead. The chart defaults SSH_LISTEN_PORT (what the container
+      # actually listens on) to this value, so setting SSH_PORT alone is
+      # enough — it also matches the external hostPort below. See
+      # `service.ssh` and SETUP.md step 1.
+      SSH_PORT: 2222
     service:
       # Self-hosted single-admin instance — no open signups. Add users via
       # the admin panel/CLI instead: gitea admin user create.
@@ -91,6 +97,18 @@ ingress:
     - secretName: gitea-tls
       hosts:
         - git.<SERVER_IP>.sslip.io
+
+# --- SSH: expose git-over-SSH on the node directly, since the host's own
+# sshd already owns port 22 and Traefik/ingress can't proxy raw SSH (L7 HTTP
+# only). hostPort binds 2222 on the node's network namespace straight to the
+# pod's container port (also 2222 — see SSH_PORT above); fine for a
+# single-node/replicaCount:1 setup, no NodePort range or Service type change
+# needed. Open 2222/tcp in the firewall (see SETUP.md step 1), and clone/push
+# with `ssh://git@<host>:2222/...` or a `~/.ssh/config` `Host` alias with
+# `Port 2222` — plain `git@host:...` assumes port 22.
+service:
+  ssh:
+    hostPort: 2222
 
 resources:
   requests:
