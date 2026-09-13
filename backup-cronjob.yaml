@@ -35,7 +35,7 @@ spec:
           automountServiceAccountToken: false
           initContainers:
             - name: restic-init
-              image: restic/restic:0.16
+              image: restic/restic:0.19.1
               envFrom:
                 - secretRef:
                     name: backup-secrets
@@ -70,7 +70,7 @@ spec:
                   mountPath: /dump
           containers:
             - name: backup
-              image: restic/restic:0.16
+              image: restic/restic:0.19.1
               envFrom:
                 - secretRef:
                     name: backup-secrets
