@@ -36,7 +36,7 @@ fi
 BEFORE_COUNT=$(grep -o '<SERVER_IP>' "$FILE" | wc -l | tr -d ' ')
 
 cp "$FILE" "$FILE.bak"
-sed -i '' "s/<SERVER_IP>/$IP/g" "$FILE"
+sed "s/<SERVER_IP>/$IP/g" "$FILE.bak" > "$FILE"
 
 echo "Replaced $BEFORE_COUNT instance(s) of <SERVER_IP> with $IP in $FILE"
 echo "Backup saved: $FILE.bak"
