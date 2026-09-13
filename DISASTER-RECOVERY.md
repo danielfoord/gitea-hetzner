@@ -34,8 +34,10 @@ Follow [SETUP.md](SETUP.md) steps 1–6 (firewall, k3s, Helm, cert-manager, Clus
 ### 2. Install Gitea, but don't let it initialize fresh
 
 ```bash
-helm install gitea gitea-charts/gitea -f gitea-values.yaml -n gitea --create-namespace
+helm install gitea gitea-charts/gitea -f gitea-values.yaml -f secrets.local.yaml -n gitea --create-namespace
 ```
+
+`secrets.local.yaml` is gitignored, so it isn't in this repo — recreate it from wherever the real passwords are separately stored (password manager, etc; see [What's backed up](#whats-backed-up-and-what-isnt)) before running this.
 
 Let it come up once (this creates the PVCs and an initial, empty database) — you're about to overwrite its contents, not use this data.
 
@@ -98,7 +100,7 @@ restic restore latest --target / --include /data
 exit
 ```
 
-This overwrites the PVC's contents with the backed-up repos/LFS/config. The Postgres dump was also captured under `/tmp/gitea-db.dump` at backup time — it's *inside this same snapshot*, but not under `/data`, so restore it separately:
+This overwrites the PVC's contents with the backed-up repos/LFS/config. The Postgres dump was also captured under `/dump/gitea-db.dump` at backup time — it's *inside this same snapshot*, but not under `/data`, so restore it separately:
 
 ```bash
 kubectl run restic-restore-db -n gitea --rm -it --restart=Never \
@@ -121,11 +123,11 @@ kubectl run restic-restore-db -n gitea --rm -it --restart=Never \
 ```
 
 ```bash
-restic restore latest --target /restore --include /tmp/gitea-db.dump
+restic restore latest --target /restore --include /dump/gitea-db.dump
 exit
 ```
 
-You now have `gitea-db.dump` sitting inside the same PVC (under a `tmp/` subdirectory) — a `kubectl cp` from a pod with that PVC mounted, or a quick `kubectl exec`, gets it to wherever you'll run `pg_restore` from next.
+You now have `gitea-db.dump` sitting inside the same PVC (under a `dump/` subdirectory) — a `kubectl cp` from a pod with that PVC mounted, or a quick `kubectl exec`, gets it to wherever you'll run `pg_restore` from next.
 
 ### 5. Restore Postgres
 

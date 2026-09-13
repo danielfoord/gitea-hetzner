@@ -11,8 +11,10 @@ Kubernetes manifests for running a self-hosted Gitea instance with CI (Gitea Act
 
 | File | Purpose |
 |---|---|
-| [`gitea-values.yaml`](gitea-values.yaml) | Helm values for the `gitea-charts/gitea` chart — Gitea itself, in-cluster Postgres, persistence, ingress, and Gitea Actions. |
-| [`cluster-issuer.yaml`](cluster-issuer.yaml) | cert-manager `ClusterIssuer` for Let's Encrypt via HTTP-01, used to provision the ingress TLS cert. |
+| [`gitea-values.yaml`](gitea-values.yaml) | Helm values for the `gitea-charts/gitea` chart — Gitea itself, in-cluster Postgres, persistence, ingress, and Gitea Actions. Safe to commit — no real secrets belong in it. |
+| [`secrets.local.yaml.example`](secrets.local.yaml.example) | Template for the gitignored values overlay that holds real passwords — copy to `secrets.local.yaml` and fill in. |
+| [`cluster-issuer.yaml`](cluster-issuer.yaml) | cert-manager `ClusterIssuer` for Let's Encrypt production, via HTTP-01, used to provision the ingress TLS cert. |
+| [`cluster-issuer-staging.yaml`](cluster-issuer-staging.yaml) | Same, against Let's Encrypt's staging endpoint — untrusted certs, no rate limits. Use this first when troubleshooting. |
 | [`act-runner.yaml`](act-runner.yaml) | Gitea Actions runner (`act_runner`) plus a Docker-in-Docker sidecar it uses to execute job containers. |
 | [`backup-cronjob.yaml`](backup-cronjob.yaml) | Nightly `CronJob` that dumps Postgres and backs up Gitea's data volume to a Backblaze B2 bucket via `restic`. |
 
@@ -30,5 +32,5 @@ See **[SETUP.md](SETUP.md)** for the full walkthrough (firewall, k3s, Helm, cert
 ## Notes
 
 - Single-node design: Postgres and Redis-backed queues are skipped in favor of built-in level/memory queues, and storage uses `local-path` (no replication). Fine for a small self-hosted instance, not for HA.
-- The Actions runner talks to a privileged DinD sidecar over plain HTTP inside the cluster network — acceptable for a single-node setup, but tighten (e.g. rootless DinD, TLS) before exposing the runner more broadly.
-- All secrets in these files are placeholders (`CHANGE_ME_STRONG_PASSWORD`, `your-email@example.com`, etc.) — replace them, and prefer Kubernetes `Secret` objects over inline values for anything sensitive.
+- The Actions runner talks to a privileged DinD sidecar over plain HTTP inside the cluster network — acceptable for a single-node setup, but tighten (e.g. rootless DinD, TLS) before exposing the runner more broadly. Both pods have `automountServiceAccountToken: false` since neither needs k8s API access, which matters given one runs arbitrary CI code and the other is privileged.
+- All secrets in these files are placeholders (`CHANGE_ME_STRONG_PASSWORD`, `your-email@example.com`, etc.). Real values go in the gitignored `secrets.local.yaml` (see `secrets.local.yaml.example`) and in Kubernetes `Secret`s created directly with `kubectl create secret` — never committed inline.

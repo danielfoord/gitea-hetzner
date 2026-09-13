@@ -1,0 +1,4 @@
+# Real credentials go here, never in gitea-values.yaml itself.
+# See secrets.local.yaml.example for the fields to override.
+secrets.local.yaml
+*.local.yaml

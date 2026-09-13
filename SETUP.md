@@ -32,7 +32,20 @@ curl -sfL https://get.k3s.io | sh -
 
 This installs a single-node k3s cluster with Traefik (ingress) and `local-path-provisioner` (storage) enabled by default — both of which `gitea-values.yaml` relies on.
 
-Fetch the kubeconfig for use from your local machine:
+**If you're running `kubectl`/`helm` directly on the server** (e.g. you SSH'd in and are working as root there), k3s writes its kubeconfig to `/etc/rancher/k3s/k3s.yaml`, not the default `~/.kube/config` — `kubectl`/`helm` won't find the cluster until you point at it:
+
+```bash
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl get nodes   # sanity check
+```
+
+Without this, `kubectl`/`helm` fall back to `http://localhost:8080` and fail with `Kubernetes cluster unreachable: ... dial tcp [::1]:8080: connect: connection refused`. Make it stick across sessions:
+
+```bash
+echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> ~/.bashrc
+```
+
+**If you're managing the cluster from your local machine instead**, fetch the kubeconfig from the server:
 
 ```bash
 sudo cat /etc/rancher/k3s/k3s.yaml
@@ -78,7 +91,12 @@ kubectl get pods -n cert-manager
 ## 6. Create the ClusterIssuer
 
 Edit `cluster-issuer.yaml`:
-- Replace `your-email@example.com` with a real address (Let's Encrypt sends expiry/problem notices here).
+- Replace `your-email@example.com` with a real address (Let's Encrypt sends expiry/problem notices here). This isn't optional — Let's Encrypt's ACME server rejects known placeholder domains, so leaving it as-is fails with:
+  ```
+  Failed to register ACME account: 400 urn:ietf:params:acme:error:invalidContact:
+  Error validating contact(s) :: contact email has forbidden domain "example.com"
+  ```
+  If you hit this, fix the email in `cluster-issuer.yaml` and re-apply (step below) — the `ClusterIssuer` retries registration on each apply.
 
 Then apply:
 
@@ -87,20 +105,28 @@ kubectl apply -f cluster-issuer.yaml
 kubectl get clusterissuer letsencrypt-prod   # should show READY=True once it can reach ACME
 ```
 
+**If you're still iterating** (DNS/ingress not confirmed working yet, or you're debugging a challenge failure), use `cluster-issuer-staging.yaml` instead/first and point `gitea-values.yaml`'s ingress annotation at `letsencrypt-staging`. Staging certs aren't trusted by browsers, but retries there don't count against Let's Encrypt's production rate limits (5 duplicate certs per registered domain per week — easy to hit while troubleshooting). Switch the annotation back to `letsencrypt-prod` once a staging cert issues cleanly.
+
 ## 7. Configure and install Gitea
 
 Edit `gitea-values.yaml`:
 
 1. Find your server's public IP: `curl -4 ifconfig.me`
 2. Replace every `<SERVER_IP>` placeholder (`DOMAIN`, `ROOT_URL`, `SSH_DOMAIN`, ingress `hosts`) with that IP. The resulting hostname (e.g. `git.203.0.113.5.sslip.io`) resolves automatically via [sslip.io](https://sslip.io) — no DNS records needed. Swap in a real domain instead if you have one.
-3. Replace both `CHANGE_ME_STRONG_PASSWORD` placeholders (Postgres user, Gitea admin) with strong, unique passwords. For anything beyond a throwaway instance, move these into a `Secret` and reference it via the chart's `existingSecret` options instead of leaving plaintext in the values file — check the chart's `values.yaml` for the exact keys, as they vary by chart version.
+3. **Don't put real passwords directly into `gitea-values.yaml`** — this file is tracked in git, and a committed password stays in history even after you later change it. Instead:
 
-Install:
+   ```bash
+   cp secrets.local.yaml.example secrets.local.yaml   # gitignored, never commit this copy
+   ```
+
+   Fill in real values in `secrets.local.yaml` (Postgres password, Gitea admin password/email); leave the `CHANGE_ME_STRONG_PASSWORD` placeholders untouched in `gitea-values.yaml` itself.
+
+Install, passing both files — the later one wins on any overlapping key:
 
 ```bash
 helm repo add gitea-charts https://dl.gitea.com/charts/
 helm repo update
-helm install gitea gitea-charts/gitea -f gitea-values.yaml -n gitea --create-namespace
+helm install gitea gitea-charts/gitea -f gitea-values.yaml -f secrets.local.yaml -n gitea --create-namespace
 ```
 
 Watch the rollout:
@@ -117,7 +143,7 @@ kubectl get certificate -n gitea
 
 `READY=True` means Let's Encrypt issued the cert. If it stays `False`, check `kubectl describe certificate gitea-tls -n gitea` and `kubectl describe challenge -n gitea` — the usual cause is port 80 not reachable from the internet (firewall, or Traefik not bound to the host correctly).
 
-Browse to `https://git.<SERVER_IP>.sslip.io/` and log in with the admin credentials from `gitea-values.yaml`.
+Browse to `https://git.<SERVER_IP>.sslip.io/` and log in with the admin credentials from `secrets.local.yaml`.
 
 ## 8. Set up backups (do this before you have anything you can't afford to lose)
 
@@ -131,7 +157,7 @@ Browse to `https://git.<SERVER_IP>.sslip.io/` and log in with the admin credenti
      --from-literal=RESTIC_PASSWORD="<a strong, separately-stored passphrase — losing this makes backups unrecoverable>" \
      --from-literal=AWS_ACCESS_KEY_ID="<B2 key ID>" \
      --from-literal=AWS_SECRET_ACCESS_KEY="<B2 application key>" \
-     --from-literal=PGPASSWORD="<same Postgres password as in gitea-values.yaml>"
+     --from-literal=PGPASSWORD="<same Postgres password as in secrets.local.yaml>"
    ```
 
 4. Apply the CronJob:
@@ -147,6 +173,14 @@ Browse to `https://git.<SERVER_IP>.sslip.io/` and log in with the admin credenti
    ```
 
    If the chart names it differently, edit the `claimName` in `backup-cronjob.yaml` to match before relying on it.
+
+   Also confirm the `pg-dump` init container's image tag (`postgres:16-alpine`) matches the Postgres version the subchart actually deployed:
+
+   ```bash
+   kubectl exec -n gitea gitea-postgresql-0 -- psql --version
+   ```
+
+   A newer `pg_dump` client talking to an older server is generally fine; a client *older* than the server often isn't — bump the tag in `backup-cronjob.yaml` if these don't line up.
 
 6. Trigger a manual run to confirm it works, rather than waiting until 3am:
 
@@ -177,5 +211,6 @@ Note this runner uses a privileged Docker-in-Docker sidecar (see the security no
 - [ ] Can `git clone`/`git push` over HTTPS against a test repo.
 - [ ] Manual backup job run completed successfully (step 8.6).
 - [ ] Actions runner shows online, if installed (step 9).
-- [ ] Passwords in `gitea-values.yaml` and `backup-secrets` are not the placeholder values, and are stored somewhere durable outside the cluster (password manager, etc.) — if you lose the Postgres password with no other copy, you lose the ability to restore a Postgres dump even if the backup itself is intact.
+- [ ] Passwords live in `secrets.local.yaml` and `backup-secrets` (not hardcoded into the tracked `gitea-values.yaml`), are not the placeholder values, and are stored somewhere durable outside the cluster (password manager, etc.) — if you lose the Postgres password with no other copy, you lose the ability to restore a Postgres dump even if the backup itself is intact.
+- [ ] `secrets.local.yaml` was never `git add`ed (check `git status` — it should show as untracked, not staged).
 - [ ] You've read [DISASTER-RECOVERY.md](DISASTER-RECOVERY.md) *before* you need it, not after.

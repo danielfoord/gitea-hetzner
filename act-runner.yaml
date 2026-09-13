@@ -19,6 +19,9 @@ spec:
       labels:
         app: act-runner
     spec:
+      # Runner executes arbitrary CI code from anyone who can push to a repo
+      # or open a PR against one; no reason it also needs k8s API access.
+      automountServiceAccountToken: false
       containers:
         - name: runner
           image: gitea/act_runner:latest
@@ -60,6 +63,8 @@ spec:
       labels:
         app: docker-dind
     spec:
+      # Already privileged; don't hand it k8s API access on top of that.
+      automountServiceAccountToken: false
       containers:
         - name: dind
           image: docker:24-dind
@@ -70,6 +75,17 @@ spec:
               value: ""
           ports:
             - containerPort: 2375
+          resources:
+            # These bound the dind daemon process itself, not the job
+            # containers it spawns inside — those run as siblings on the
+            # node and aren't constrained by this pod's cgroup. On a small
+            # single-node box, watch actual node memory under CI load.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
 ---
 apiVersion: v1
 kind: Service

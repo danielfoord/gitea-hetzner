@@ -31,6 +31,7 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          automountServiceAccountToken: false
           initContainers:
             - name: restic-init
               image: restic/restic:0.16
@@ -38,6 +39,26 @@ spec:
                 - secretRef:
                     name: backup-secrets
               command: ["sh", "-c", "restic snapshots || restic init"]
+            # restic/restic is a minimal image with no Postgres client, so the
+            # dump has to happen in a separate container with one. Match this
+            # tag to whatever Postgres major version the postgresql subchart
+            # actually deployed: `kubectl exec -n gitea gitea-postgresql-0 -- psql --version`.
+            - name: pg-dump
+              image: postgres:16-alpine
+              envFrom:
+                - secretRef:
+                    name: backup-secrets
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "Dumping Postgres..."
+                  PGPASSWORD="$PGPASSWORD" pg_dump -h gitea-postgresql -U gitea -d gitea \
+                    -F c -f /dump/gitea-db.dump
+              volumeMounts:
+                - name: dump
+                  mountPath: /dump
           containers:
             - name: backup
               image: restic/restic:0.16
@@ -49,12 +70,8 @@ spec:
                 - -c
                 - |
                   set -e
-                  echo "Dumping Postgres..."
-                  PGPASSWORD="$PGPASSWORD" pg_dump -h gitea-postgresql -U gitea -d gitea \
-                    -F c -f /tmp/gitea-db.dump
-
                   echo "Backing up Gitea data + DB dump to B2..."
-                  restic backup /data /tmp/gitea-db.dump \
+                  restic backup /data /dump/gitea-db.dump \
                     --tag gitea-nightly
 
                   echo "Pruning old snapshots (keep 14 daily, 8 weekly, 6 monthly)..."
@@ -64,6 +81,9 @@ spec:
               volumeMounts:
                 - name: gitea-data
                   mountPath: /data
+                  readOnly: true
+                - name: dump
+                  mountPath: /dump
                   readOnly: true
               resources:
                 requests:
@@ -76,3 +96,5 @@ spec:
             - name: gitea-data
               persistentVolumeClaim:
                 claimName: gitea-shared-storage   # matches PVC created by the Gitea chart
+            - name: dump
+              emptyDir: {}

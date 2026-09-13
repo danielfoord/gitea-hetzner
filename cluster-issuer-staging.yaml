@@ -1,0 +1,26 @@
+# cluster-issuer-staging.yaml
+# Same as cluster-issuer.yaml but against Let's Encrypt's staging ACME
+# endpoint — untrusted certs, but no rate limits worth worrying about.
+# Use this first when testing DNS/ingress/cert-manager wiring, especially
+# after any invalidContact/challenge failure, so retries don't burn against
+# the production rate limits (5 duplicate certs/registered domain/week).
+#
+# To use it: swap the annotation in gitea-values.yaml's ingress section
+# from "letsencrypt-prod" to "letsencrypt-staging", apply, confirm
+# `kubectl get certificate -n gitea` goes READY=True, then switch back to
+# "letsencrypt-prod" and re-apply for the real, trusted cert.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: "your-email@example.com"   # replace with a real email, same as cluster-issuer.yaml
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
