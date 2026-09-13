@@ -112,7 +112,7 @@ kubectl get clusterissuer letsencrypt-prod   # should show READY=True once it ca
 Edit `gitea-values.yaml`:
 
 1. Find your server's public IP: `curl -4 ifconfig.me`
-2. Replace every `<SERVER_IP>` placeholder (`DOMAIN`, `ROOT_URL`, `SSH_DOMAIN`, ingress `hosts`) with that IP. The resulting hostname (e.g. `git.203.0.113.5.sslip.io`) resolves automatically via [sslip.io](https://sslip.io) — no DNS records needed. Swap in a real domain instead if you have one.
+2. Replace every `<SERVER_IP>` placeholder (`DOMAIN`, `ROOT_URL`, `SSH_DOMAIN`, ingress `hosts`) with that IP — run `./set-server-ip.sh <IP>` to do this in one shot (it backs up the file to `gitea-values.yaml.bak` and prints what changed). The resulting hostname (e.g. `git.203.0.113.5.sslip.io`) resolves automatically via [sslip.io](https://sslip.io) — no DNS records needed. Swap in a real domain instead if you have one.
 3. **`gitea-values.yaml` declares no passwords at all** — don't add any. It's tracked in git, and a committed password stays in history even after you later change it. Instead:
 
    ```bash

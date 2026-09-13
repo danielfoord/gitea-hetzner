@@ -6,6 +6,7 @@ Kubernetes manifests for running a self-hosted Gitea instance with CI (Gitea Act
 
 - **[SETUP.md](SETUP.md)** — full setup instructions, from a bare server to a running instance.
 - **[DISASTER-RECOVERY.md](DISASTER-RECOVERY.md)** — restoring from backup after data loss, on a new host or in place.
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — diagnosing common install/upgrade failures (stuck releases, Postgres password mismatches, TLS/cert issues).
 
 ## Contents
 

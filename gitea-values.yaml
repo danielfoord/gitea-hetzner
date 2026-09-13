@@ -59,6 +59,10 @@ gitea:
       DOMAIN: "git.<SERVER_IP>.sslip.io"
       ROOT_URL: "https://git.<SERVER_IP>.sslip.io/"
       SSH_DOMAIN: "git.<SERVER_IP>.sslip.io"
+    service:
+      # Self-hosted single-admin instance — no open signups. Add users via
+      # the admin panel/CLI instead: gitea admin user create.
+      DISABLE_REGISTRATION: true
     database:
       DB_TYPE: postgres
     session:
