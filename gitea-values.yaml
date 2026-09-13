@@ -46,7 +46,17 @@ redis-cluster:
 
 gitea:
   admin:
-    username: "gitea_admin"
+    # NOTE: this is a live lookup key, not just a one-time bootstrap value —
+    # the chart's init container looks up a user with this exact username on
+    # every `helm upgrade` and, if found, syncs its password; if NOT found,
+    # it tries to CREATE a new one instead, which fails outright if the
+    # configured email is already taken ("CreateUser: e-mail already in
+    # use"), crash-looping the init container forever. There's no `gitea
+    # admin user rename` CLI command in this version — if you ever rename
+    # the admin account via the web UI, update this (and the email in
+    # secrets.local.yaml) to match in the SAME change, before the next
+    # `helm upgrade`, or it breaks. Currently: "danielfoord".
+    username: "danielfoord"
     # password and email: set only in secrets.local.yaml, never here. The
     # chart only creates this admin user at all if both username and
     # password are set — leave password unset (e.g. no secrets.local.yaml

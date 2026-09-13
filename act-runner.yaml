@@ -10,7 +10,7 @@ metadata:
   name: act-runner
   namespace: gitea
 spec:
-  replicas: 1
+  replicas: 4
   selector:
     matchLabels:
       app: act-runner
@@ -34,7 +34,14 @@ spec:
                   name: act-runner-token
                   key: token
             - name: GITEA_RUNNER_NAME
-              value: "k3s-runner-1"
+              # Unique per pod (act_runner_1, act_runner_2, ...) so 4
+              # replicas don't all register under the identical display
+              # name "k3s-runner-1" — each still gets its own runner
+              # UUID/secret regardless, but distinct names make the
+              # admin Actions -> Runners list legible.
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             # Docker-in-Docker socket for running job containers.
             # Simpler than rootless DinD for a single-node setup; tighten later if needed.
             - name: DOCKER_HOST
