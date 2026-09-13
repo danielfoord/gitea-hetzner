@@ -113,13 +113,13 @@ Edit `gitea-values.yaml`:
 
 1. Find your server's public IP: `curl -4 ifconfig.me`
 2. Replace every `<SERVER_IP>` placeholder (`DOMAIN`, `ROOT_URL`, `SSH_DOMAIN`, ingress `hosts`) with that IP. The resulting hostname (e.g. `git.203.0.113.5.sslip.io`) resolves automatically via [sslip.io](https://sslip.io) — no DNS records needed. Swap in a real domain instead if you have one.
-3. **Don't put real passwords directly into `gitea-values.yaml`** — this file is tracked in git, and a committed password stays in history even after you later change it. Instead:
+3. **`gitea-values.yaml` declares no passwords at all** — don't add any. It's tracked in git, and a committed password stays in history even after you later change it. Instead:
 
    ```bash
    cp secrets.local.yaml.example secrets.local.yaml   # gitignored, never commit this copy
    ```
 
-   Fill in real values in `secrets.local.yaml` (Postgres password, Gitea admin password/email); leave the `CHANGE_ME_STRONG_PASSWORD` placeholders untouched in `gitea-values.yaml` itself.
+   Fill in the Gitea admin password and email in `secrets.local.yaml` — required, since the chart only creates the admin user if a password is set. Leave the commented-out Postgres password block alone unless you specifically need a predictable one; left unset, the `postgresql` subchart generates a strong random password itself.
 
 Install, passing both files — the later one wins on any overlapping key:
 
@@ -158,9 +158,10 @@ Browse to `https://git.<SERVER_IP>.sslip.io/` and log in with the admin credenti
      --from-literal=RESTIC_REPOSITORY="s3:https://s3.us-west-004.backblazeb2.com/gitea-backups" \
      --from-literal=RESTIC_PASSWORD="<a strong, separately-stored passphrase — losing this makes backups unrecoverable>" \
      --from-literal=AWS_ACCESS_KEY_ID="<B2 key ID>" \
-     --from-literal=AWS_SECRET_ACCESS_KEY="<B2 application key>" \
-     --from-literal=PGPASSWORD="<same Postgres password as in secrets.local.yaml>"
+     --from-literal=AWS_SECRET_ACCESS_KEY="<B2 application key>"
    ```
+
+   No `PGPASSWORD` here — the backup job's `pg-dump` container reads that directly from the `gitea-postgresql` Secret the `postgresql` subchart already created, so the Postgres password only ever needs to be entered once (in `secrets.local.yaml`).
 
 4. Apply the CronJob:
 
@@ -213,6 +214,7 @@ Note this runner uses a privileged Docker-in-Docker sidecar (see the security no
 - [ ] Can `git clone`/`git push` over HTTPS against a test repo.
 - [ ] Manual backup job run completed successfully (step 8.6).
 - [ ] Actions runner shows online, if installed (step 9).
-- [ ] Passwords live in `secrets.local.yaml` and `backup-secrets` (not hardcoded into the tracked `gitea-values.yaml`), are not the placeholder values, and are stored somewhere durable outside the cluster (password manager, etc.) — if you lose the Postgres password with no other copy, you lose the ability to restore a Postgres dump even if the backup itself is intact.
+- [ ] The Gitea admin password lives only in `secrets.local.yaml` (never hardcoded into the tracked `gitea-values.yaml`) and is stored somewhere durable outside the cluster (password manager, etc.) — it's the one credential nothing in this repo can recover for you.
 - [ ] `secrets.local.yaml` was never `git add`ed (check `git status` — it should show as untracked, not staged).
+- [ ] `backup-secrets` holds the B2/restic credentials, and only those — no `PGPASSWORD` in it (that's read from the `gitea-postgresql` Secret directly; see [What's backed up](DISASTER-RECOVERY.md#whats-backed-up-and-what-isnt)).
 - [ ] You've read [DISASTER-RECOVERY.md](DISASTER-RECOVERY.md) *before* you need it, not after.

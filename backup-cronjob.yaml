@@ -5,13 +5,14 @@
 # Before applying:
 #   1. Create a B2 bucket + application key (S3-compatible endpoint,
 #      e.g. https://s3.us-west-004.backblazeb2.com)
-#   2. Create the secret:
+#   2. Create the secret (no PGPASSWORD here — the pg-dump container below
+#      reads that straight from the postgresql subchart's own Secret, so the
+#      Postgres password only has to be entered once, in secrets.local.yaml):
 #        kubectl create secret generic backup-secrets -n gitea \
 #          --from-literal=RESTIC_REPOSITORY="s3:https://s3.us-west-004.backblazeb2.com/your-bucket-name" \
 #          --from-literal=RESTIC_PASSWORD="a-strong-passphrase-for-encryption" \
 #          --from-literal=AWS_ACCESS_KEY_ID="<B2_KEY_ID>" \
-#          --from-literal=AWS_SECRET_ACCESS_KEY="<B2_APP_KEY>" \
-#          --from-literal=PGPASSWORD="CHANGE_ME_STRONG_PASSWORD"
+#          --from-literal=AWS_SECRET_ACCESS_KEY="<B2_APP_KEY>"
 #   3. First run: `restic init` must be executed once against the repo
 #      (the initContainer below does this idempotently — safe to leave in).
 
@@ -45,9 +46,17 @@ spec:
             # actually deployed: `kubectl exec -n gitea gitea-postgresql-0 -- psql --version`.
             - name: pg-dump
               image: postgres:16-alpine
-              envFrom:
-                - secretRef:
-                    name: backup-secrets
+              env:
+                # Same Secret+key the postgresql subchart itself created for
+                # this user — not a copy, so it can't drift out of sync with
+                # secrets.local.yaml. Secret name follows the chart's default
+                # naming (<release>-postgresql); if you installed under a
+                # different release name, update this to match.
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: gitea-postgresql
+                      key: password
               command:
                 - sh
                 - -c

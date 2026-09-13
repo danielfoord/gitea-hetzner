@@ -63,9 +63,10 @@ kubectl create secret generic backup-secrets -n gitea \
   --from-literal=RESTIC_REPOSITORY="s3:https://s3.us-west-004.backblazeb2.com/gitea-backups" \
   --from-literal=RESTIC_PASSWORD="<your restic passphrase>" \
   --from-literal=AWS_ACCESS_KEY_ID="<B2 key ID>" \
-  --from-literal=AWS_SECRET_ACCESS_KEY="<B2 application key>" \
-  --from-literal=PGPASSWORD="<postgres password>"
+  --from-literal=AWS_SECRET_ACCESS_KEY="<B2 application key>"
 ```
+
+(No `PGPASSWORD` — the backup job reads that from the `gitea-postgresql` Secret, which the fresh install in step 2 already recreated.)
 
 Find the PVC name and run a one-off restore pod mounting it:
 
@@ -141,9 +142,9 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql -n g
 Copy `gitea-db.dump` into a pod that can reach Postgres (or `kubectl cp` it in from your local machine), then:
 
 ```bash
-kubectl exec -it -n gitea gitea-postgresql-0 -- bash
-PGPASSWORD="<postgres password>" pg_restore -h localhost -U gitea -d gitea --clean --if-exists /path/to/gitea-db.dump
-exit
+PW=$(kubectl get secret gitea-postgresql -n gitea -o jsonpath='{.data.password}' | base64 -d)
+kubectl exec -it -n gitea gitea-postgresql-0 -- env PGPASSWORD="$PW" \
+  pg_restore -h localhost -U gitea -d gitea --clean --if-exists /path/to/gitea-db.dump
 ```
 
 `--clean --if-exists` drops and recreates conflicting objects so this is safe to run against the just-initialized, empty database from step 2.

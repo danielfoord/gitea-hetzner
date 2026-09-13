@@ -1,8 +1,7 @@
 # values.yaml for gitea-charts/gitea
-# Install with:
-#   helm repo add gitea-charts https://dl.gitea.com/charts/
-#   helm repo update
-#   helm install gitea gitea-charts/gitea -f gitea-values.yaml -n gitea --create-namespace
+# Full install steps (including the secrets.local.yaml overlay this depends
+# on): see SETUP.md. Don't repeat the install command here too — it's what
+# went stale last time and caused a real install to run without secrets.
 
 replicaCount: 1
 
@@ -21,7 +20,13 @@ postgresql:
     postgresql:
       auth:
         username: gitea
-        password: "CHANGE_ME_STRONG_PASSWORD"   # move to a Secret in real use, see note below
+        # No password here. Leaving it unset makes the subchart generate a
+        # strong random one itself, stored in the `gitea-postgresql` Secret
+        # (key: password) — nothing else in this repo needs to know it by
+        # hand: the backup job and DR steps read it from that Secret directly.
+        # Only set one here (via secrets.local.yaml, never this file) if you
+        # specifically need a password you can predict, e.g. for an external
+        # tool that can't read cluster Secrets.
         database: gitea
   primary:
     persistence:
@@ -42,8 +47,11 @@ redis-cluster:
 gitea:
   admin:
     username: "gitea_admin"
-    password: "CHANGE_ME_STRONG_PASSWORD"
-    email: "admin@example.com"
+    # password and email: set only in secrets.local.yaml, never here. The
+    # chart only creates this admin user at all if both username and
+    # password are set — leave password unset (e.g. no secrets.local.yaml
+    # supplied) and no admin bootstraps, rather than one with a known,
+    # committed placeholder password.
   config:
     server:
       # Replace <SERVER_IP> with your Hetzner server's public IP, e.g. 203.0.113.5
